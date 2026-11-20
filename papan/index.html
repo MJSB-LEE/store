@@ -281,6 +281,13 @@ button:disabled{opacity:.6;cursor:wait}
 .sg:hover{border-color:#93c5fd}.sg.on{background:var(--blue);border-color:var(--blue);color:#fff}
 .subtabs.inner{background:#f1f5f9;border:none;border-radius:10px;padding:5px;display:inline-flex;margin-bottom:14px}
 .subtabs.inner .st.on{background:#fff;box-shadow:0 1px 3px rgba(15,23,42,.12)}
+.hcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.hcard{background:#fff;border:1px solid var(--line);border-left:5px solid var(--c);border-radius:10px;padding:10px 14px;cursor:pointer;transition:box-shadow .12s}
+.hcard:hover{box-shadow:0 4px 14px rgba(15,23,42,.1)}
+.hcard.on{outline:2px solid var(--c);outline-offset:-1px}
+.hcard .n{font-size:28px;font-weight:800;color:var(--c);line-height:1.1}
+.hcard .l{color:#475569;font-size:12.5px;margin-top:2px}
+.hok{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;border-radius:10px;padding:16px;text-align:center;font-weight:600}
 </style>
 </head>
 <body>
@@ -313,6 +320,7 @@ button:disabled{opacity:.6;cursor:wait}
   <div class="layout">
     <nav class="side">
       <div class="grp">Papan</div>
+      <div class="mi" data-act="menu" data-m="home">🏠 Home</div>
       <div class="mi" data-act="menu" data-m="list">📋 Bill list</div>
       <div class="mi" data-act="menu" data-m="photos">📷 Photos</div>
       <div class="mi" data-perm="report" data-act="menu" data-m="report">📊 Monthly report</div>
@@ -707,7 +715,7 @@ function showApp(){
   $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
   document.querySelectorAll('.admin-only').forEach(e => e.classList.toggle('hidden', me.role !== 'admin'));
   applyPerms();
-  if(!tabs.length) openTab(isPhone() ? {key:'photos', type:'photos', title:'Photos'} : {key:'list', type:'list', title:'Bill list'});
+  if(!tabs.length) openTab(isPhone() ? {key:'photos', type:'photos', title:'Photos'} : {key:'home', type:'home', title:'Home'});
   else render();
   backupReminder(); cleanupPhotos(); runQueue();
 }
@@ -789,6 +797,41 @@ function monthOptions(selected){
   return `<option value="">All months</option>` + [...ms].sort().reverse().map(m => `<option value="${m}" ${m === selected ? 'selected' : ''}>${monthName(m)}</option>`).join('');
 }
 function fsel(list, k, value, all){ return `<select data-bind="flt" data-k="${k}"><option value="">${all}</option>${names(list).map(o => `<option ${o === value ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`; }
+VIEW.home = t => {
+  const td = today(), dmy = d => d ? d.slice(8, 10) + '/' + d.slice(5, 7) + '/' + d.slice(0, 4) : '';
+  const B = db.bills, days = ms => Math.floor((Date.now() - ms) / 864e5), od = +db.settings.photo.overdue || 3;
+  const G = {
+    late:   {n:`Sent, not received more than ${od} days`, i:'⏰', c:'#dc2626', L:B.filter(b => isOverdue(b)), why:b => `Not received for ${days(b.sentAt)} days`},
+    unsent: {n:'Made but not marked Sent', i:'🚚', c:'#7c3aed', L:B.filter(b => stat(b) === 'created' && b.date && b.date < td), why:b => `Bill date ${dmy(b.date)}, still not Sent`},
+    pending:{n:'Pending (problem)', i:'⚠', c:'#d97706', L:B.filter(b => stat(b) === 'pending'), why:b => b.pendingNote || 'Problem'},
+    cases:  {n:'Case to follow up', i:'⚑', c:'#b91c1c', L:B.filter(b => b.isCase && stat(b) !== 'received'), why:b => 'Flagged as case'},
+  };
+  const todayL = B.filter(b => b.date === td), todayBills = todayL.reduce((a, b) => a + (b.rows || []).filter(r => (r.inv || r.ref || r.sup)).length, 0);
+  const k = t.hf || '';
+  const card = (key, n, label, c) => `<div class="hcard ${k === key ? 'on' : ''}" style="--c:${c}" data-act="hf" data-k="${key}"><div class="n">${n}</div><div class="l">${label}</div></div>`;
+  let rows = [];
+  if(k === 'today') rows = todayL.map(b => [b, stat(b) === 'received' ? 'Received' : 'Today']);
+  else (k ? [k] : ['late', 'unsent', 'pending', 'cases']).forEach(g => G[g].L.forEach(b => { if(!rows.some(r => r[0] === b)) rows.push([b, G[g].why(b)]); }));
+  rows.sort((a, b) => (a[0].date || '').localeCompare(b[0].date || ''));
+  const act = b => { const s = stat(b);
+    if(s === 'created') return can('sent') ? `<button class="sm" data-act="qmark" data-id="${b.id}">🚚 Sent</button>` : '';
+    if((s === 'sent' || s === 'pending') && can('received') && !needOther(b)) return `<button class="sm pri" data-act="qmark" data-id="${b.id}">✔ Received</button>`;
+    return ''; };
+  const total = G.late.L.length + G.unsent.L.length + G.pending.L.length + G.cases.L.length;
+  return `<div class="hcards">
+      ${card('late', G.late.L.length, `${G.late.i} ${G.late.n}`, G.late.c)}
+      ${card('unsent', G.unsent.L.length, `${G.unsent.i} ${G.unsent.n}`, G.unsent.c)}
+      ${card('pending', G.pending.L.length, `${G.pending.i} ${G.pending.n}`, G.pending.c)}
+      ${card('cases', G.cases.L.length, `${G.cases.i} ${G.cases.n}`, G.cases.c)}
+      ${card('today', todayL.length + ' · ' + todayBills, '📅 Today: trips · bills', '#1d4ed8')}
+    </div>
+    <div class="bar" style="margin:0 0 8px"><h3 style="margin:0;font-size:15px">${k === 'today' ? 'Today' : k ? G[k].i + ' ' + G[k].n : 'Needs action'}</h3><span class="sp" style="flex:1"></span>
+      ${k ? '<button class="sm" data-act="hf" data-k="">Show all</button>' : ''}<button class="sm" data-act="hrefresh">↻ Refresh</button></div>
+    ${!rows.length ? `<div class="hok">${k ? 'Nothing here.' : total ? '' : '✔ All good. Nothing needs action now.'}</div>` : `<div class="tw"><table class="t"><thead><tr><th>Doc no.</th><th>Estate</th><th>Driver</th><th>Vehicle</th><th>Date</th><th>Status</th><th>Why</th><th></th></tr></thead><tbody>
+      ${rows.map(([b, why]) => `<tr><td><a href="#" class="note-red" style="font-weight:700" data-act="openbill" data-id="${b.id}">${esc(b.docno)}</a></td><td>${esc(b.estate)}</td><td>${esc(b.driver)}</td><td>${esc(b.vehicle)}</td><td>${dmy(b.date)}</td>
+        <td>${badge(b)}</td><td>${esc(why)}</td><td style="white-space:nowrap"><button class="sm" data-act="openbill" data-id="${b.id}">Open</button> ${act(b)}</td></tr>`).join('')}
+    </tbody></table></div>`}`;
+};
 VIEW.list = t => {
   t.f = t.f || {month:today().slice(0,7), estate:'', driver:'', vehicle:'', st:'', q:''};
   const f = t.f;
@@ -1320,7 +1363,7 @@ document.addEventListener('click', e => {
 });
 const ACT = {
   tab: el => { cur = +el.dataset.id; render(); },
-  menu: el => { const m = el.dataset.m; if(isPhone() && m !== 'photos') return; openTab({key:m, type:m, title:{list:'Bill list', photos:'Photos', report:'Monthly report', settings:'Settings'}[m]}); },
+  menu: el => { const m = el.dataset.m; if(isPhone() && m !== 'photos') return; openTab({key:m, type:m, title:{home:'Home', list:'Bill list', photos:'Photos', report:'Monthly report', settings:'Settings'}[m]}); },
   logout: () => { if(setDirty.size && !confirm('Settings are not saved. Log out anyway?')) return; setDirty.clear(); logout(); },
   mainmenu: () => { location.href = '../../'; },
   setsave: el => saveSettingsNow(el),
@@ -1402,11 +1445,11 @@ const ACT = {
     if(el.dataset.kind === 'problem'){
       const r = prompt('What is the problem with ' + b.docno + '? (required)'); if(r === null) return;
       if(!r.trim()) return alert('Please type the problem.');
-      await setStatus(el, b, 'pending', r.trim()); return fillList(t);
+      await setStatus(el, b, 'pending', r.trim()); return t.type === 'list' ? fillList(t) : render();
     }
     if(next === 'received' && needOther(b)) return alert('You marked this bill as sent. Another person must confirm received.');
     if(!confirm('Mark ' + b.docno + ' (' + b.estate + ') as ' + next + '?')) return;
-    await setStatus(el, b, next, ''); fillList(t);
+    await setStatus(el, b, next, ''); if(t.type === 'list') fillList(t); else render();
   },
   undo: async (el, t) => {
     const b = db.bills.find(x => x.id === t.billId), s = stat(b);
@@ -1546,6 +1589,8 @@ const ACT = {
     try{ await busy(el, () => rpc('papan_group_delete', {...T(), p_id:g.id})); t.gEdit = null; t.gDirty = false; toast('Group deleted.'); await refresh(); render(); }catch(e){}
   },
   logload: (el, t) => loadLog(t),
+  hf: (el, t) => { t.hf = t.hf === el.dataset.k ? '' : el.dataset.k; render(); },
+  hrefresh: async () => { await refresh(); render(); },
   logcsv: (el, t) => {
     const L = t.logRows || []; if(!L.length) return alert('Nothing to download.');
     const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
