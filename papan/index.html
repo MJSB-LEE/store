@@ -276,6 +276,11 @@ button:disabled{opacity:.6;cursor:wait}
 .grpT input[type=checkbox]{width:18px;height:18px;cursor:pointer}
 .logT td{font-size:13px}.logT .act{font-weight:600}
 .rule{display:flex;gap:10px;align-items:flex-start;margin:6px 0 4px}.rule input{width:18px;height:18px;margin-top:2px}
+.sgroups{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.sg{padding:9px 16px;border:1px solid var(--line);border-radius:10px;background:#fff;cursor:pointer;font-weight:600;font-size:14px;color:#334155}
+.sg:hover{border-color:#93c5fd}.sg.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.subtabs.inner{background:#f1f5f9;border:none;border-radius:10px;padding:5px;display:inline-flex;margin-bottom:14px}
+.subtabs.inner .st.on{background:#fff;box-shadow:0 1px 3px rgba(15,23,42,.12)}
 </style>
 </head>
 <body>
@@ -1299,7 +1304,11 @@ VIEW.settings = t => {
   }
   const sb = (LISTS[t.sub] || t.sub === 'doc' || t.sub === 'photo') ? saveBarHtml() : '';
   if(!subs.length) return '<p class="muted">You have no settings to change.</p>';
-  return `<div class="subtabs">${subs.map(([k, n]) => `<div class="st ${k === t.sub ? 'on' : ''}" data-act="sub" data-s="${k}">${n}</div>`).join('')}</div>${sb}${body}`;
+  const GRP = [['📋 Lists', ['company','estate','driver','vehicle','supplier','note']], ['⚙️ Papan setup', ['doc','photo','backup']], ['👥 Users and security', ['users','groups','log']]]
+    .map(([n, ks]) => [n, subs.filter(s => ks.includes(s[0]))]).filter(g => g[1].length);
+  const og = GRP.find(g => g[1].some(s => s[0] === t.sub)) || GRP[0];
+  const top = GRP.length > 1 ? `<div class="sgroups">${GRP.map(g => `<div class="sg ${g === og ? 'on' : ''}" data-act="sub" data-s="${g[1][0][0]}">${g[0]}</div>`).join('')}</div>` : '';
+  return `${top}<div class="subtabs inner">${og[1].map(([k, n]) => `<div class="st ${k === t.sub ? 'on' : ''}" data-act="sub" data-s="${k}">${n}</div>`).join('')}</div>${sb}${body}`;
 };
 /* ================= EVENTS ================= */
 document.addEventListener('click', e => {
