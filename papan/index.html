@@ -153,7 +153,7 @@ button:disabled{opacity:.6;cursor:wait}
   main{min-width:0}
   .top{padding:8px 10px;gap:8px}
   .top .crumb{font-size:12px}
-  #who{display:none}
+  #who{font-size:10px}
   .top button{padding:4px 7px;font-size:11px}
   #content{padding:12px}
   .dochead{margin:-12px -12px 12px;padding:10px 12px 0}
@@ -247,6 +247,30 @@ button:disabled{opacity:.6;cursor:wait}
   #print .phg figcaption{font-size:8pt;color:#444;margin-top:1.5mm;text-align:center;flex:none}
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
+/* FFB-style header + login */
+#login{background:#3f4458}
+.lcard{max-width:410px;text-align:center;border:none;box-shadow:0 20px 50px rgba(0,0,0,.35);padding:32px 34px 26px}
+.lcard h1{font-size:23px;color:#1e40af;font-weight:800;letter-spacing:.3px;margin:0 0 6px}
+.lcard .f{text-align:left}
+.lcard .lbtn{width:100%;background:#059669;border-color:#059669;color:#fff;font-weight:700}
+.lcard .lbtn:hover{background:#047857}
+.lback{display:inline-block;margin-top:16px;color:#1e40af;text-decoration:none;font-weight:600;font-size:14px}
+.lback:hover{text-decoration:underline}
+.top{background:#1e40af}
+.top .ttl{font-weight:800;font-size:14px;letter-spacing:.4px;color:#fff;white-space:nowrap}
+.top .badge{background:#1e3a8a;border:1px solid #93c5fd;color:#fff;font-weight:800;font-size:11px;border-radius:5px;padding:3px 8px}
+.top .tuser{font-size:13px;color:#e0e7ff;white-space:nowrap}
+.top button.mm{background:#0f172a;border-color:#0f172a;color:#fff;font-weight:700}
+.top button.lo{background:#dc2626;border-color:#dc2626;color:#fff;font-weight:700}
+.top button.mm:hover{background:#1e293b}.top button.lo:hover{background:#b91c1c}
+.syncok{color:#bbf7d0}.syncdirty{color:#fde68a;font-weight:700}
+.savebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:14px;max-width:720px}
+.savebar .msg{color:var(--muted);font-size:13px}
+.savebar.dirty{border-color:#f59e0b;background:#fffbeb}
+.savebar.dirty .msg{color:#92400e;font-weight:700}
+.savebar .sv{background:#059669;border-color:#059669;color:#fff;font-weight:700}
+.savebar .sv:disabled{background:#cbd5e1;border-color:#cbd5e1;color:#fff}
+@media (max-width:820px){ .top .ttl .long{display:none} .top .tuser{display:none} }
 </style>
 </head>
 <body>
@@ -254,25 +278,26 @@ button:disabled{opacity:.6;cursor:wait}
 <!-- ===== LOGIN ===== -->
 <div id="login" class="hidden">
   <form class="lcard" id="lform">
-    <h1>Papan</h1>
-    <div class="muted">MJSB Store · Bill send up</div>
+    <h1>MASIH JAYA GROUP</h1>
+    <div class="muted">Papan · Bill Send Up to Estate</div>
     <div class="f"><label>Username</label><input id="lu" autocomplete="username" required></div>
     <div class="f"><label>Password</label><input id="lp" type="password" autocomplete="current-password" required></div>
     <div class="err hidden" id="lerr"></div>
-    <div class="f"><button class="pri" style="width:100%">Log in</button></div>
-    <div class="muted" style="font-size:12px;margin-top:12px">First time only: username <b>admin</b>, password <b>admin123</b>. Change it straight after (top bar › Change password).</div>
+    <div class="f"><button class="lbtn">Login</button></div>
+    <a class="lback" href="../../">← Back to Main Menu</a>
   </form>
 </div>
 
 <!-- ===== APP ===== -->
 <div id="app" class="hidden">
   <div class="top">
-    <div class="crumb"><a href="../../">MJSB Portal</a> <span class="h">›</span> <a href="../">Store</a> › <b>Papan</b></div>
+    <div class="ttl">MASIH JAYA GROUP<span class="long"> — PAPAN (BILL SEND UP)</span></div>
     <span class="sp"></span>
     <span id="sync"></span>
-    <span id="who" style="font-size:13px;color:#cbd5e1"></span>
+    <span id="who" class="badge"></span><span id="whoname" class="tuser"></span>
+    <button class="sm mm" data-act="mainmenu">🏠 Main Menu</button>
     <button class="sm" data-act="chpw">Change password</button>
-    <button class="sm" data-act="logout">Logout</button>
+    <button class="sm lo" data-act="logout">Logout</button>
   </div>
   <div id="bkup" class="bkup hidden"></div>
   <div class="layout">
@@ -456,7 +481,8 @@ async function queuedFor(folderId){ try{ return (await QDB.all()).filter(q => q.
 let syncing = false, lastSync = 0;
 function applyLoad(d, full){
   me = d.me;
-  const st = d.settings || {};
+  const st = {...(d.settings || {})};
+  if(typeof setDirty !== 'undefined') setDirty.forEach(k => { if(db.settings && db.settings[k] !== undefined) st[k] = db.settings[k]; });
   db.settings = {...clone(DEFAULT_SETTINGS), ...st};
   if(full){ db.bills = []; db.folders = []; db.photos = []; }
   (d.bills || []).forEach(r => upsert(db.bills, mapBill(r)));
@@ -493,6 +519,7 @@ function showSync(){
   let h = '';
   if(!netOk) h = '<span class="syncbad">⚠ Offline</span>';
   if(qN) h += `<span class="syncq">⏳ ${qN} photo${qN > 1 ? 's' : ''} waiting to upload${qErr && !qBusy ? ' (will retry)' : ''}</span>`;
+  else if(typeof setDirty !== 'undefined' && setDirty.size) h += '<span class="syncdirty">● Settings not saved</span>';
   else if(netOk) h += '<span class="syncok">✔ Saved online</span>';
   el.innerHTML = h;
 }
@@ -716,7 +743,7 @@ function phoneGuard(){
 function render(){
   if(!me) return;
   phoneGuard();
-  $('#who').textContent = me.u + ' (' + me.role + ')';
+  $('#who').textContent = String(me.role).toUpperCase(); $('#whoname').textContent = 'User: ' + me.u;
   const t = curTab();
   document.querySelectorAll('.mi[data-m]').forEach(e => e.classList.toggle('on', !!t && t.key === e.dataset.m));
   $('#tabs').innerHTML = tabs.filter(x => !isPhone() || PHONE_OK.includes(x.type)).map(x => `<div class="tab ${x.id === cur ? 'on' : ''}" data-act="tab" data-id="${x.id}">${esc(x.title)}<span class="x" data-act="close" data-id="${x.id}" title="Close">×</span></div>`).join('');
@@ -1169,7 +1196,7 @@ VIEW.settings = t => {
     body = `<table class="t setT" style="max-width:720px"><thead><tr><th style="width:46px">No</th>${L.fields.map(f => `<th>${f[1]}</th>`).join('')}<th style="width:170px"></th></tr></thead><tbody>
       ${items.map((o, i) => `<tr><td>${i+1}</td>${L.fields.map(f => `<td>${f[2] ? `<select data-bind="set" data-i="${i}" data-k="${f[0]}"><option value="">(all companies)</option>${names(f[2]).map(c => `<option ${c === o[f[0]] ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>` : `<input data-bind="set" data-i="${i}" data-k="${f[0]}" value="${esc(o[f[0]])}">`}</td>`).join('')}<td style="white-space:nowrap"><button class="sm" data-act="setmove" data-i="${i}" data-d="-1" title="Move up" ${i === 0 ? 'disabled' : ''}>▲</button> <button class="sm" data-act="setmove" data-i="${i}" data-d="1" title="Move down" ${i === items.length - 1 ? 'disabled' : ''}>▼</button> <button class="sm dan" data-act="setdel" data-i="${i}">Delete</button></td></tr>`).join('')}
       <tr><td></td>${L.fields.map(f => `<td>${f[2] ? `<select id="new_${f[0]}"><option value="">(all companies)</option>${names(f[2]).map(c => `<option>${esc(c)}</option>`).join('')}</select>` : `<input id="new_${f[0]}" placeholder="${f[1]}">`}</td>`).join('')}<td><button class="sm pri" data-act="setadd">Add</button></td></tr>
-      </tbody></table><p class="muted" style="font-size:12px">Changes save automatically. Old bills keep the names they were saved with.</p>`;
+      </tbody></table><p class="muted" style="font-size:12px">Click 💾 Save after you change something. Old bills keep the names they were saved with.</p>`;
   } else if(t.sub === 'doc'){
     const d = db.settings.doc, exEst = db.settings.estate[0]?.name || '', ex = fmtDoc(5, today(), exEst), missing = db.settings.estate.filter(e => !e.code).map(e => e.name);
     body = `<div class="grid" style="max-width:720px">
@@ -1217,7 +1244,8 @@ VIEW.settings = t => {
         <p class="muted" style="margin:0 0 10px">This browser still has bills and photos from the test version (saved only on this computer). Copy them to the online database once. Bills that already exist online are skipped.</p>
         <button class="pri" data-act="importlocal">⬆ Copy old data to online</button></div>` : ''}`;
   }
-  return `<div class="subtabs">${subs.map(([k, n]) => `<div class="st ${k === t.sub ? 'on' : ''}" data-act="sub" data-s="${k}">${n}</div>`).join('')}</div>${body}`;
+  const sb = (LISTS[t.sub] || t.sub === 'doc' || t.sub === 'photo') ? saveBarHtml() : '';
+  return `<div class="subtabs">${subs.map(([k, n]) => `<div class="st ${k === t.sub ? 'on' : ''}" data-act="sub" data-s="${k}">${n}</div>`).join('')}</div>${sb}${body}`;
 };
 /* ================= EVENTS ================= */
 document.addEventListener('click', e => {
@@ -1230,7 +1258,10 @@ document.addEventListener('click', e => {
 const ACT = {
   tab: el => { cur = +el.dataset.id; render(); },
   menu: el => { const m = el.dataset.m; if(isPhone() && m !== 'photos') return; openTab({key:m, type:m, title:{list:'Bill list', photos:'Photos', report:'Monthly report', settings:'Settings'}[m]}); },
-  logout: () => logout(),
+  logout: () => { if(setDirty.size && !confirm('Settings are not saved. Log out anyway?')) return; setDirty.clear(); logout(); },
+  mainmenu: () => { location.href = '../../'; },
+  setsave: el => saveSettingsNow(el),
+  setundo: async () => { if(!confirm('Cancel the changes you have not saved?')) return; setDirty.clear(); await refresh(true); render(); showSync(); },
   bkhide: () => $('#bkup').classList.add('hidden'),
   chpw: async () => {
     const p = prompt('New password (at least 6 characters):'); if(p === null) return;
@@ -1466,13 +1497,25 @@ async function setStatus(el, b, action, note){
   try{ const r = await busy(el, () => rpc('papan_bill_status', {...T(), p_id:b.id, p_action:action, p_note:note || ''})); upsert(db.bills, mapBill(r)); }
   catch(e){ await refresh(); }
 }
-const setTimers = {};
-function saveSetting(key, now){
-  clearTimeout(setTimers[key]);
-  const go = async () => { try{ await rpc('papan_save_setting', {...T(), p_key:key, p_value:db.settings[key]}); toast('✔ Saved'); }catch(e){ toast(e.message, true); refresh(); } };
-  if(now) return go();
-  setTimers[key] = setTimeout(go, 700);
+/* Settings are saved only when the user clicks 💾 Save. */
+const setDirty = new Set();
+function saveSetting(key){ setDirty.add(key); showSaveBar(); showSync(); }
+function saveBarHtml(){
+  const d = setDirty.size;
+  return `<div class="savebar ${d ? 'dirty' : ''}" id="savebar"><span class="msg">${d ? '● Not saved yet. Click Save to keep your changes.' : '✔ All settings saved.'}</span><span class="sp" style="flex:1"></span>
+    <button class="sm" data-act="setundo" ${d ? '' : 'disabled'}>↶ Cancel changes</button>
+    <button class="sm sv" data-act="setsave" ${d ? '' : 'disabled'}>💾 Save</button></div>`;
 }
+function showSaveBar(){ const b = $('#savebar'); if(b) b.outerHTML = saveBarHtml(); }
+async function saveSettingsNow(el){
+  const keys = [...setDirty];
+  try{
+    await busy(el, async () => { for(const k of keys){ await rpc('papan_save_setting', {...T(), p_key:k, p_value:db.settings[k]}); setDirty.delete(k); } });
+    toast('✔ Settings saved');
+  }catch(e){ toast(e.message, true); }
+  showSaveBar(); showSync();
+}
+window.addEventListener('beforeunload', e => { if(setDirty.size){ e.preventDefault(); e.returnValue = ''; } });
 $('#restoreFile').onchange = e => {
   const f = e.target.files[0]; if(!f) return;
   const r = new FileReader();
