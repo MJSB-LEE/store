@@ -270,7 +270,12 @@ button:disabled{opacity:.6;cursor:wait}
 .savebar.dirty .msg{color:#92400e;font-weight:700}
 .savebar .sv{background:#059669;border-color:#059669;color:#fff;font-weight:700}
 .savebar .sv:disabled{background:#cbd5e1;border-color:#cbd5e1;color:#fff}
-@media (max-width:820px){ .top .ttl .long{display:none} .top .tuser{display:none} }
+@media (max-width:820px){ .top{flex-wrap:wrap;row-gap:6px;padding:8px 10px} .top .ttl{font-size:13px;flex:1 1 100%} .top .ttl .long{display:none} .top .tuser{display:none} .top .sp{display:none} #sync{font-size:11px} .top button{padding:4px 8px;font-size:11px} .top .lbl{display:none} }
+.ust{color:#64748b;font-weight:600;font-size:13px}.ust.on{color:#16a34a}
+.grpT th,.grpT td{vertical-align:middle}.grpT td:first-child{min-width:260px}
+.grpT input[type=checkbox]{width:18px;height:18px;cursor:pointer}
+.logT td{font-size:13px}.logT .act{font-weight:600}
+.rule{display:flex;gap:10px;align-items:flex-start;margin:6px 0 4px}.rule input{width:18px;height:18px;margin-top:2px}
 </style>
 </head>
 <body>
@@ -295,8 +300,8 @@ button:disabled{opacity:.6;cursor:wait}
     <span class="sp"></span>
     <span id="sync"></span>
     <span id="who" class="badge"></span><span id="whoname" class="tuser"></span>
-    <button class="sm mm" data-act="mainmenu">🏠 Main Menu</button>
-    <button class="sm" data-act="chpw">Change password</button>
+    <button class="sm mm" data-act="mainmenu">🏠<span class="lbl"> Main Menu</span></button>
+    <button class="sm" data-act="chpw" title="Change password">🔑<span class="lbl"> Change password</span></button>
     <button class="sm lo" data-act="logout">Logout</button>
   </div>
   <div id="bkup" class="bkup hidden"></div>
@@ -305,9 +310,9 @@ button:disabled{opacity:.6;cursor:wait}
       <div class="grp">Papan</div>
       <div class="mi" data-act="menu" data-m="list">📋 Bill list</div>
       <div class="mi" data-act="menu" data-m="photos">📷 Photos</div>
-      <div class="mi" data-act="menu" data-m="report">📊 Monthly report</div>
+      <div class="mi" data-perm="report" data-act="menu" data-m="report">📊 Monthly report</div>
       <div class="grp admin-only">System</div>
-      <div class="mi admin-only" data-act="menu" data-m="settings">⚙️ Settings</div>
+      <div class="mi" data-perm="lists" data-act="menu" data-m="settings">⚙️ Settings</div>
     </nav>
     <main>
       <div class="tabs" id="tabs"></div>
@@ -377,7 +382,7 @@ const ERR = {WRONG_LOGIN:'Wrong username or password.', NOT_LOGGED_IN:'Please lo
   NOTE_REQUIRED:'Please type the problem.', MISSING_FIELDS:'Some required fields are empty.', DUP_USER:'That username is already used.',
   SHORT_PASSWORD:'Password must be at least 6 characters.', BAD_USER:'Enter a username and a password of at least 6 characters.',
   NOT_SELF:'You cannot do that to your own account.', NOT_FOUND:'This item was deleted by someone else.', EMPTY_REF:'Folder ref cannot be empty.',
-  NOTHING_TO_UNDO:'Nothing to undo.'};
+  NOTHING_TO_UNDO:'Nothing to undo.', NO_RIGHT:'You do not have the right to do this. Ask admin.', GROUP_IN_USE:'Some users are still in this group. Move them to another group first.', BAD_GROUP:'That group does not exist.', EMPTY:'Please type a name.'};
 function friendly(m){
   const [code, ...p] = String(m || '').split('|');
   if(ERR[code]) return ERR[code];
@@ -385,6 +390,19 @@ function friendly(m){
   if(code === 'ALREADY') return `This bill is already ${p[0]}${p[1] ? ' (by ' + p[1] + (p[2] ? ', ' + p[2] : '') + ')' : ''}. The page is now refreshed.`;
   return m || 'Something went wrong.';
 }
+const RIGHTS = [['bill_edit','Make and edit bills'],['bill_delete','Delete bills'],['sent','Mark Sent'],['received','Mark Received'],
+  ['pending','Pending (problem) and ⚑ Case flag'],['photos','Take, upload and attach photos'],['photo_delete','Delete photos and folders'],
+  ['report','Monthly report and Excel'],['lists','Settings lists (company, estate, driver, vehicle, supplier, red note)']];
+function can(r){ if(!me) return false; const x = me.rights || []; return me.role === 'admin' || x.includes('*') || x.includes(r); }
+function ruleOn(k){ const r = (db.settings && db.settings.rules) || {}; return r[k] === undefined ? true : !!r[k]; }
+function needOther(b){ return b.sentBy === me.u && me.role !== 'admin' && ruleOn('receivedOther'); }
+function applyPerms(){ document.querySelectorAll('[data-perm]').forEach(e => e.classList.toggle('hidden', !can(e.dataset.perm))); }
+const ACT_LBL = {login:'Logged in', login_failed:'Wrong password', logout:'Logged out', bill_created:'New bill', bill_edited:'Bill edited', bill_deleted:'Bill deleted',
+  status_sent:'Marked sent', status_received:'Marked received', status_pending:'⚠ Pending (problem)', status_case_on:'⚑ Flagged as case', status_case_off:'Case flag removed',
+  status_undo_sent:'Undo sent', status_undo_pending:'Undo pending', status_undo_received:'Undo received', setting_saved:'Settings saved', supplier_added:'Supplier added',
+  folder_created:'Photo folder made', folder_edited:'Photo folder edited', folder_deleted:'Photo folder deleted', folder_attached:'Photos attached', photos_added:'Photos added',
+  photo_deleted:'Photo deleted', user_added:'User added', user_group:'User group changed', user_deleted:'User deleted', user_logged_out:'User logged out by admin',
+  password_changed:'Password changed', group_added:'Group added', group_changed:'Group rights changed', group_deleted:'Group deleted'};
 let netOk = true;
 function setNet(ok){ if(netOk === ok) return; netOk = ok; showSync(); }
 async function rpc(fn, args = {}){
@@ -489,6 +507,7 @@ function applyLoad(d, full){
   (d.folders || []).forEach(r => upsert(db.folders, mapFolder(r)));
   (d.photos || []).forEach(r => upsert(db.photos, mapPhoto(r)));
   if(d.users) db.users = d.users;
+  if(d.groups) db.groups = d.groups;
   since = new Date(Date.parse(d.now) - 5000).toISOString();
   lastSync = Date.now();
   return full || (d.bills || []).length || (d.folders || []).length || (d.photos || []).length;
@@ -682,6 +701,7 @@ function showLogin(msg){
 function showApp(){
   $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
   document.querySelectorAll('.admin-only').forEach(e => e.classList.toggle('hidden', me.role !== 'admin'));
+  applyPerms();
   if(!tabs.length) openTab(isPhone() ? {key:'photos', type:'photos', title:'Photos'} : {key:'list', type:'list', title:'Bill list'});
   else render();
   backupReminder(); cleanupPhotos(); runQueue();
@@ -690,12 +710,12 @@ $('#lform').onsubmit = async e => {
   e.preventDefault();
   const btn = $('#lform button'); btn.disabled = true; btn.textContent = 'Logging in…';
   try{
-    const r = await rpc('papan_login', {p_username:$('#lu').value.trim(), p_password:$('#lp').value});
+    const r = await rpc('papan_login', {p_username:$('#lu').value.trim(), p_password:$('#lp').value, p_device:isPhone() ? 'Phone' : 'Computer'});
     token = r.token; try{ localStorage.setItem('papan_token', token); }catch(err){}
     const d = await rpc('papan_load', {...T(), p_since:null}); lastSettingsJson = JSON.stringify(d.settings || {}); applyLoad(d, true);
     lastActive = Date.now(); showApp();
   }catch(err){ showLogin(err.message); }
-  finally{ btn.disabled = false; btn.textContent = 'Log in'; }
+  finally{ btn.disabled = false; btn.textContent = 'Login'; }
 };
 function logout(msg){
   const t = token; token = null; since = null;
@@ -742,8 +762,10 @@ function phoneGuard(){
 }
 function render(){
   if(!me) return;
-  phoneGuard();
-  $('#who').textContent = String(me.role).toUpperCase(); $('#whoname').textContent = 'User: ' + me.u;
+  phoneGuard(); applyPerms();
+  $('#who').textContent = String(me.groupName || me.role).toUpperCase(); $('#whoname').textContent = 'User: ' + me.u;
+  tabs = tabs.filter(x => !((x.type === 'report' && !can('report')) || (x.type === 'settings' && !can('lists') && me.role !== 'admin')));
+  if(cur && !tabs.some(x => x.id === cur)) cur = tabs.length ? tabs[tabs.length - 1].id : null;
   const t = curTab();
   document.querySelectorAll('.mi[data-m]').forEach(e => e.classList.toggle('on', !!t && t.key === e.dataset.m));
   $('#tabs').innerHTML = tabs.filter(x => !isPhone() || PHONE_OK.includes(x.type)).map(x => `<div class="tab ${x.id === cur ? 'on' : ''}" data-act="tab" data-id="${x.id}">${esc(x.title)}<span class="x" data-act="close" data-id="${x.id}" title="Close">×</span></div>`).join('');
@@ -767,7 +789,7 @@ VIEW.list = t => {
   const f = t.f;
   return `<div class="bar">
       <input data-bind="flt" data-k="q" value="${esc(f.q)}" placeholder="Search invoice no., supplier, B/REF or doc no. (all months)" style="flex:1;min-width:200px">
-      <button class="pri" data-act="newbill">+ New bill</button>
+      ${can('bill_edit') ? '<button class="pri" data-act="newbill">+ New bill</button>' : ''}
     </div>
     <div class="grid" style="margin-bottom:12px">
       <div><label>Month</label><select data-bind="flt" data-k="month">${monthOptions(f.month)}</select></div>
@@ -780,7 +802,7 @@ VIEW.list = t => {
       <thead><tr><th>Doc no.</th><th>Date</th><th>Send up to</th><th>Driver</th><th>Vehicle</th><th>Bills</th><th>Note</th><th>Created by</th><th>Status</th><th>📷</th></tr></thead>
       <tbody id="ltb"></tbody></table></div>
     <div class="bar" style="margin-top:12px"><span id="lct" class="muted"></span><span class="sp"></span>
-      <button data-act="printlist">🖨 Print these</button><button data-act="export">⬇ Excel</button></div>`;
+      <button data-act="printlist">🖨 Print these</button>${can('report') ? '<button data-act="export">⬇ Excel</button>' : ''}</div>`;
 };
 function filtered(f){
   const q = (f.q || '').trim().toUpperCase();
@@ -794,10 +816,10 @@ function filtered(f){
 function fillList(t){
   const L = filtered(t.f), ex = t.exp || {};
   const quick = b => { const s = stat(b);
-    if(s === 'created') return `<button class="sm" data-act="qmark" data-id="${b.id}">🚚 Sent</button>`;
+    if(s === 'created') return can('sent') ? `<button class="sm" data-act="qmark" data-id="${b.id}">🚚 Sent</button>` : '';
     if(s === 'sent' || s === 'pending'){
-      const rc = b.sentBy === me.u && me.role !== 'admin' ? `<span class="muted" style="font-size:11px">needs other person</span>` : `<button class="sm pri" data-act="qmark" data-id="${b.id}">✔ Received</button>`;
-      return rc + (s === 'sent' ? `<button class="sm dan" data-act="qmark" data-kind="problem" data-id="${b.id}" title="Problem: mark pending">⚠</button>` : `<span class="tlnote" title="${esc(b.pendingNote)}" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block">${esc(b.pendingNote)}</span>`);
+      const rc = !can('received') ? '' : needOther(b) ? `<span class="muted" style="font-size:11px">needs other person</span>` : `<button class="sm pri" data-act="qmark" data-id="${b.id}">✔ Received</button>`;
+      return rc + (s === 'sent' ? (!can('pending') ? '' : `<button class="sm dan" data-act="qmark" data-kind="problem" data-id="${b.id}" title="Problem: mark pending">⚠</button>`) : `<span class="tlnote" title="${esc(b.pendingNote)}" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block">${esc(b.pendingNote)}</span>`);
     }
     return ''; };
   $('#ltb').innerHTML = L.length ? L.map(b => `<tr class="click" data-act="openbill" data-id="${b.id}">
@@ -905,9 +927,9 @@ VIEW.view = t => {
   const head = `<div class="dochead"><div class="bar">${badge(b)}
       <span class="muted" style="font-size:12px">Created by ${esc(b.createdBy)} · ${fmtTime(b.createdAt)}</span>
       <span class="sp"></span>
-      ${locked ? '<span class="muted" style="font-size:12px">🔒 Locked after received</span>' : '<button data-act="editbill">✏️ Edit</button>'}
+      ${locked ? '<span class="muted" style="font-size:12px">🔒 Locked after received</span>' : can('bill_edit') ? '<button data-act="editbill">✏️ Edit</button>' : ''}
       <button class="pri" data-act="printbill">🖨 Print</button>
-      ${admin ? '<button class="dan" data-act="delbill">Delete</button>' : ''}
+      ${can('bill_delete') ? '<button class="dan" data-act="delbill">Delete</button>' : ''}
     </div>
     </div>`;
   const parts = statusHtml(t, b);
@@ -924,18 +946,19 @@ function statusHtml(t, b){
     step = `<div class="fcard" style="border-color:#fcd34d">
       <div class="fhead"><span>🚚 Next: mark doc as sent</span></div>
       <p class="muted" style="margin:0 0 10px">Mark this when the doc goes out with the driver.</p>
-      <button class="pri" data-act="mark">Mark as sent</button>
+      ${can('sent') ? '<button class="pri" data-act="mark">Mark as sent</button>' : '<span class="muted">Waiting for the store to mark it sent.</span>'}
       ${t.perr ? `<p class="err">${esc(t.perr)}</p>` : ''}</div>`;
   } else if(next === 'received'){
-    const samePerson = b.sentBy === me.u && !admin;
+    const samePerson = needOther(b), canR = can('received'), canP = can('pending');
     step = `<div class="fcard" style="border-color:${s === 'pending' ? '#fca5a5' : '#86efac'}">
       <div class="fhead"><span>${s === 'pending' ? '⚠ Pending: problem with this doc' : '✅ Next: mark doc as received'}</span></div>
       ${s === 'pending' ? `<p style="margin:0 0 10px"><span class="tlnote">“${esc(b.pendingNote)}”</span> <span class="muted">${esc(b.pendingBy)} · ${fmtTime(b.pendingAt)}</span></p>` : ''}
       <p class="muted" style="margin:0 0 10px">${s === 'pending' ? 'When the problem is solved, mark it received.' : 'Mark this when the signed and stamped doc is back at the office. Only type a remark if there is a problem.'}</p>
       <div class="bar" style="margin:0"><input id="rcvNote" placeholder="${s === 'pending' ? 'Remark (optional): how it was solved' : 'Remark (only if there is a problem)'}" style="flex:1;min-width:240px" class="${t.perr ? 'bad' : ''}">
-        ${samePerson ? '' : `<button class="pri" data-act="mark">✔ Mark as received</button>`}
-        ${s === 'sent' ? `<button class="dan" data-act="mark" data-kind="problem">⚠ Problem (pending)</button>` : ''}</div>
-      ${samePerson ? `<p class="err" style="margin:8px 0 0">You marked this doc as sent, so another person must confirm received.</p>` : ''}
+        ${samePerson || !canR ? '' : `<button class="pri" data-act="mark">✔ Mark as received</button>`}
+        ${s === 'sent' && canP ? `<button class="dan" data-act="mark" data-kind="problem">⚠ Problem (pending)</button>` : ''}</div>
+      ${!canR && !canP ? '<p class="muted" style="margin:8px 0 0">Waiting for the office to mark it received.</p>' : ''}
+      ${samePerson && canR ? `<p class="err" style="margin:8px 0 0">You marked this doc as sent, so another person must confirm received.</p>` : ''}
       ${t.perr ? `<p class="err">${esc(t.perr)}</p>` : ''}</div>`;
   } else {
     step = `<div class="fcard" style="border-color:#86efac;background:#f0fdf4"><b style="color:#166534">✔ Received.</b> <span class="muted">This bill is complete.</span></div>`;
@@ -949,11 +972,11 @@ function statusHtml(t, b){
   const keep = +db.settings.photo.keepMonths;
   return {step, rest:`
     <div class="fcard"><div class="fhead"><span>🕒 Timeline</span><span class="sp"></span>
-      ${!b.isCase ? '<button class="sm" data-act="case">⚑ Flag as case</button>' : admin ? '<button class="sm" data-act="case">Remove case flag</button>' : ''}
+      ${!b.isCase ? (can('pending') ? '<button class="sm" data-act="case">⚑ Flag as case</button>' : '') : admin ? '<button class="sm" data-act="case">Remove case flag</button>' : ''}
       ${admin && s !== 'created' ? `<button class="sm dan" data-act="undo">↶ Undo ${s}</button>` : ''}</div>${tl}</div>
     <div class="fcard"><div class="fhead"><span>🖼 Photos</span><span class="sp"></span>
       <span class="muted" style="font-size:12px;font-weight:normal">${b.isCase ? 'Case: photos kept until the flag is removed.' : keep ? `Photos are removed ${keep} month${keep > 1 ? 's' : ''} after they are taken.` : 'Photos are kept forever.'}</span></div>
-      <div class="bar" style="margin:0 0 12px">
+      <div class="bar ${can('photos') ? '' : 'hidden'}" style="margin:0 0 12px">
         <label class="btnlike">📷 Take photo<input type="file" accept="image/*" capture="environment" data-pick data-to="bill" hidden></label>
         <label class="btnlike">⬆ Upload photos<input type="file" accept="image/*" multiple data-pick data-to="bill" hidden></label>
         <button data-act="attachopen">📎 ${t.attach ? 'Hide' : 'Attach from Photos'}</button>
@@ -971,7 +994,7 @@ const LB = {list:[], i:0};
 function showLB(){
   const p = LB.list[LB.i]; if(!p) return;
   $('#lbimg').src = p.u; $('#lbcap').textContent = p.cap + (LB.list.length > 1 ? '   ·   ' + (LB.i + 1) + ' / ' + LB.list.length : '');
-  $('#lb').dataset.id = p.id; $('#lbdel').classList.toggle('hidden', me.role !== 'admin' || !p.fileId);
+  $('#lb').dataset.id = p.id; $('#lbdel').classList.toggle('hidden', !can('photo_delete') || !p.fileId);
   document.querySelectorAll('.lbnav').forEach(b => b.classList.toggle('hidden', LB.list.length < 2));
   $('#lb').classList.remove('hidden');
 }
@@ -1097,11 +1120,11 @@ VIEW.photos = t => {
   const folderPanel = of ? `<div class="fcard" style="border-color:#93c5fd">
       <div class="fhead"><span>📁 ${esc(of.ref)}</span><span class="muted" style="font-weight:normal;font-size:13px">${esc(of.estate)}${of.note ? ' · ' + esc(of.note) : ''} · ${esc(of.by)} · ${fmtTime(of.at)}</span>
         ${ofBill ? `<button class="sm" data-act="openbill" data-id="${ofBill.id}">✔ Attached to ${esc(ofBill.docno)} · open doc</button>` : '<span class="badge" style="color:#92400e;background:#fef3c7">Waiting to attach</span>'}<span class="sp"></span>
-        <label class="btnlike">📷 Take photo<input type="file" accept="image/*" capture="environment" data-pick data-to="folder" hidden></label>
-        <label class="btnlike">⬆ Add photos<input type="file" accept="image/*" multiple data-pick data-to="folder" hidden></label>
-        ${!of.billId || me.role === 'admin' ? '<button data-act="fedit">✏️ Edit</button>' : ''}
+        ${can('photos') ? `<label class="btnlike">📷 Take photo<input type="file" accept="image/*" capture="environment" data-pick data-to="folder" hidden></label>
+        <label class="btnlike">⬆ Add photos<input type="file" accept="image/*" multiple data-pick data-to="folder" hidden></label>` : ''}
+        ${can('photos') && (!of.billId || me.role === 'admin') ? '<button data-act="fedit">✏️ Edit</button>' : ''}
         <button data-act="fprint" data-fid="${of.id}">🖨 Print all</button><button data-act="fdl" data-fid="${of.id}">⬇ Download all</button>
-        ${me.role === 'admin' ? '<button class="dan" data-act="fdel">Delete folder</button>' : ''}<button data-act="fclose">Close</button></div>
+        ${can('photo_delete') ? '<button class="dan" data-act="fdel">Delete folder</button>' : ''}<button data-act="fclose">Close</button></div>
       ${t.fe ? `<div class="fcard" style="background:#f8fafc;margin:0 0 12px">
         <div class="fgrid">
           <div><label>Folder ref <i class="rq">*</i></label><input data-bind="fe" data-k="ref" value="${esc(t.fe.ref)}" style="text-transform:uppercase"></div>
@@ -1116,7 +1139,7 @@ VIEW.photos = t => {
       <div class="thumbs" id="ph_fold"><span class="muted">Loading…</span></div></div>` : '';
   const showSel = `<select data-bind="pf" data-k="show" style="width:auto">${[['all','All folders'],['waiting','Waiting to attach'],['attached','Attached to doc']].map(([v, n]) => `<option value="${v}" ${v === (t.pf.show || 'all') ? 'selected' : ''}>${n}</option>`).join('')}</select>`;
   const sh = t.pf.show || 'all', okShow = f => sh === 'all' || (sh === 'waiting' ? !f.billId : !!f.billId);
-  const newBtn = '<button class="pri" data-act="fnew">+ New photo folder</button>';
+  const newBtn = can('photos') ? '<button class="pri" data-act="fnew">+ New photo folder</button>' : '';
   const msg = t.pmsg ? `<p style="color:var(--green);font-size:13px;margin:0 0 10px">✔ ${esc(t.pmsg)}</p>` : '';
   if(!t.pf.estate){
     const ests = t.pf.company ? estatesFor(t.pf.company) : names('estate');
@@ -1188,8 +1211,10 @@ VIEW.report = t => {
 
 /* ----- Settings ----- */
 VIEW.settings = t => {
-  t.sub = t.sub || 'estate';
-  const subs = [['company','Company'],['estate','Estate'],['driver','Driver'],['vehicle','Vehicle'],['supplier','Supplier'],['note','Red note'],['doc','Doc number'],['photo','Photos and status'],['users','Users'],['backup','Backup']];
+  const A = me.role === 'admin';
+  const subs = [...(can('lists') ? [['company','Company'],['estate','Estate'],['driver','Driver'],['vehicle','Vehicle'],['supplier','Supplier'],['note','Red note']] : []),
+                ...(A ? [['doc','Doc number'],['photo','Photos and rules'],['users','Users'],['groups','Groups and rights'],['log','Activity log'],['backup','Backup']] : [])];
+  if(!subs.some(s => s[0] === t.sub)) t.sub = subs.some(s => s[0] === 'estate') ? 'estate' : (subs[0] ? subs[0][0] : '');
   let body = '';
   if(LISTS[t.sub]){
     const L = LISTS[t.sub], items = db.settings[t.sub];
@@ -1212,13 +1237,39 @@ VIEW.settings = t => {
     ${missing.length ? `<p class="err">These estates have no short code yet: ${missing.map(esc).join(', ')}. Add it in Settings › Estate.</p>` : ''}
     <p class="muted" style="font-size:12px">New changes apply to new bills. Saved bills keep their doc number.</p>`;
   } else if(t.sub === 'users'){
-    body = `<table class="t setT usersT" style="max-width:640px"><thead><tr><th>Username</th><th>Role</th><th></th></tr></thead><tbody>
-      ${db.users.map((u, i) => `<tr><td>${esc(u.u)}${u.u === me.u ? ' <span class="muted">(you)</span>' : ''}<div class="muted" style="font-size:11px">Last login: ${u.last ? fmtTime(Date.parse(u.last)) : 'never'}</div></td>
-        <td><select data-bind="role" data-i="${i}" ${u.u === me.u ? 'disabled' : ''}><option value="staff" ${u.role==='staff'?'selected':''}>Staff</option><option value="admin" ${u.role==='admin'?'selected':''}>Admin</option></select></td>
-        <td><button class="sm" data-act="userpw" data-i="${i}">Reset password</button> ${u.u !== me.u ? `<button class="sm dan" data-act="userdel" data-i="${i}">Delete</button>` : ''}</td></tr>`).join('')}
-      <tr><td><input id="nu_u" placeholder="Username"></td><td><select id="nu_r"><option value="staff">Staff</option><option value="admin">Admin</option></select></td>
-        <td style="display:flex;gap:6px"><input id="nu_p" type="password" placeholder="Password"><button class="sm pri" data-act="useradd">Add</button></td></tr>
-      </tbody></table><p class="muted" style="font-size:12px">Admin: everything. Staff: add, edit and print bills; no Settings, no delete.</p>`;
+    const G = db.groups || [], gid = u => u.group || (u.role === 'admin' ? 'admin' : 'store');
+    const ago = ts => { if(!ts) return ''; const m = Math.round((Date.now() - Date.parse(ts)) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : fmtTime(Date.parse(ts)); };
+    const on = db.users.filter(u => u.online).length;
+    body = `<div class="bar" style="margin:0 0 10px"><span><b style="color:#16a34a">● ${on}</b> online now · ${db.users.length} users</span><button class="sm" data-act="userrefresh">↻ Refresh</button></div>
+      <table class="t setT usersT" style="max-width:1000px"><thead><tr><th>Username</th><th>Group</th><th>Last login</th><th>Status</th><th></th></tr></thead><tbody>
+      ${db.users.map((u, i) => `<tr><td><b>${esc(u.u)}</b>${u.u === me.u ? ' <span class="muted">(you)</span>' : ''}</td>
+        <td><select data-bind="role" data-i="${i}" ${u.u === me.u ? 'disabled' : ''}>${G.map(g => `<option value="${esc(g.id)}" ${g.id === gid(u) ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select></td>
+        <td>${u.last ? fmtTime(Date.parse(u.last)) : '<span class="muted">never</span>'}${u.device ? `<div class="muted" style="font-size:11px">${u.device === 'Phone' ? '📱' : '💻'} ${esc(u.device)}</div>` : ''}</td>
+        <td>${u.online ? '<span class="ust on">● Online</span>' : `<span class="ust">○ Offline</span>${u.seen ? `<div class="muted" style="font-size:11px">Last active ${ago(u.seen)}</div>` : ''}`}</td>
+        <td style="white-space:nowrap"><button class="sm" data-act="userpw" data-i="${i}">Reset password</button> ${u.u !== me.u && u.online ? `<button class="sm" data-act="userkick" data-i="${i}">Log out</button> ` : ''}${u.u !== me.u ? `<button class="sm dan" data-act="userdel" data-i="${i}">Delete</button>` : ''}</td></tr>`).join('')}
+      <tr><td><input id="nu_u" placeholder="Username"></td><td><select id="nu_r">${G.filter(g => g.id !== 'admin').concat(G.filter(g => g.id === 'admin')).map(g => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}</select></td>
+        <td colspan="2"><input id="nu_p" type="password" placeholder="Password (6 or more characters)"></td><td><button class="sm pri" data-act="useradd">Add user</button></td></tr>
+      </tbody></table><p class="muted" style="font-size:12px">Online = used Papan in the last 3 minutes. What each group can do is set in <b>Groups and rights</b>.</p>`;
+  } else if(t.sub === 'groups'){
+    if(!t.gEdit) t.gEdit = clone(db.groups || []);
+    const G = t.gEdit;
+    body = `${grpBar(t)}<div class="tw"><table class="t grpT" style="width:auto"><thead><tr><th>What they can do</th>${G.map((g, j) => `<th style="text-align:center">${g.locked ? esc(g.name) : `<input data-bind="gname" data-j="${j}" value="${esc(g.name)}" style="width:120px;text-align:center">`}
+        <div class="muted" style="font-size:11px;font-weight:normal;margin-top:4px">${(db.users || []).filter(u => (u.group || (u.role === 'admin' ? 'admin' : 'store')) === g.id).length} users${!g.locked ? ` <button class="sm dan" data-act="grpdel" data-j="${j}" style="padding:1px 6px">Delete</button>` : ''}</div></th>`).join('')}</tr></thead><tbody>
+      ${RIGHTS.map(([k, n]) => `<tr><td>${esc(n)}</td>${G.map((g, j) => `<td style="text-align:center">${g.locked ? '✅' : `<input type="checkbox" data-bind="gright" data-j="${j}" data-k="${k}" ${(g.rights || []).includes(k) ? 'checked' : ''}>`}</td>`).join('')}</tr>`).join('')}
+      <tr><td class="muted">Users, groups, activity log, doc number, photo rules, backup</td>${G.map(g => `<td style="text-align:center">${g.locked ? '✅' : '<span class="muted">—</span>'}</td>`).join('')}</tr>
+      </tbody></table></div>
+      <div class="bar" style="margin-top:12px"><input id="ng_name" placeholder="New group name, e.g. Clerk" style="max-width:240px"><button class="sm" data-act="grpadd">+ Add group</button></div>
+      <p class="muted" style="font-size:12px">Admin can always do everything. Everyone who can log in can see the bill list and print bills.</p>`;
+  } else if(t.sub === 'log'){
+    t.lf = t.lf || {from:today().slice(0, 8) + '01', to:today(), user:'', q:''};
+    body = `<div class="bar" style="flex-wrap:wrap;align-items:flex-end;margin:0 0 12px">
+        <div><label>From</label><input type="date" data-bind="lf" data-k="from" value="${t.lf.from}"></div>
+        <div><label>To</label><input type="date" data-bind="lf" data-k="to" value="${t.lf.to}"></div>
+        <div><label>User</label><select data-bind="lf" data-k="user"><option value="">All users</option>${(db.users || []).map(u => `<option ${u.u === t.lf.user ? 'selected' : ''}>${esc(u.u)}</option>`).join('')}</select></div>
+        <div style="flex:1;min-width:200px"><label>Doc no. or detail</label><input data-bind="lf" data-k="q" value="${esc(t.lf.q)}" placeholder="e.g. PTS-1/11"></div>
+        <button class="sm pri" data-act="logload">🔍 Show</button><button class="sm" data-act="logcsv">⬇ Excel</button></div>
+      <div id="logbox"><p class="muted">Loading…</p></div>`;
+    setTimeout(() => loadLog(t), 0);
   } else if(t.sub === 'photo'){
     const ps = db.settings.photo;
     body = `<div class="grid" style="max-width:560px">
@@ -1226,6 +1277,8 @@ VIEW.settings = t => {
       <div><label>Overdue after (days sent, not received)</label><input type="number" min="1" step="1" data-bind="pset" data-k="overdue" value="${esc(ps.overdue)}"></div>
     </div>
     <p class="muted" style="font-size:12px">Bills flagged as ⚑ Case keep their photos. Only photos are removed; the bill and timeline stay.</p>
+    <h3 style="font-size:14px;margin:18px 0 6px">Rules</h3>
+    <label class="rule"><input type="checkbox" data-bind="rule" data-k="receivedOther" ${ruleOn('receivedOther') ? 'checked' : ''}><span><b>Received must be a different person from Sent</b><br><span class="muted" style="font-size:12px">On: the person who clicked Sent cannot click Received (admin still can). Off: anyone with the Mark Received right can do it.</span></span></label>
     <p id="stor" class="muted" style="font-size:12px">Checking Google Drive space…</p>`;
     setTimeout(async () => {
       const mb = db.photos.reduce((a, p) => a + (p.size || 0), 0) / 1048576;
@@ -1245,6 +1298,7 @@ VIEW.settings = t => {
         <button class="pri" data-act="importlocal">⬆ Copy old data to online</button></div>` : ''}`;
   }
   const sb = (LISTS[t.sub] || t.sub === 'doc' || t.sub === 'photo') ? saveBarHtml() : '';
+  if(!subs.length) return '<p class="muted">You have no settings to change.</p>';
   return `<div class="subtabs">${subs.map(([k, n]) => `<div class="st ${k === t.sub ? 'on' : ''}" data-act="sub" data-s="${k}">${n}</div>`).join('')}</div>${sb}${body}`;
 };
 /* ================= EVENTS ================= */
@@ -1327,7 +1381,7 @@ const ACT = {
     if(!next) return;
     const note = ($('#rcvNote')?.value || '').trim();
     if(el.dataset.kind === 'problem' && !note){ t.perr = 'Type what the problem is first.'; render(); $('#rcvNote')?.focus(); return; }
-    if(next === 'received' && b.sentBy === me.u && me.role !== 'admin'){ t.perr = 'Another person must confirm received.'; return render(); }
+    if(next === 'received' && needOther(b)){ t.perr = 'Another person must confirm received.'; return render(); }
     t.perr = '';
     await setStatus(el, b, el.dataset.kind === 'problem' ? 'pending' : next, el.dataset.kind === 'problem' || next === 'received' ? note : '');
     render();
@@ -1341,7 +1395,7 @@ const ACT = {
       if(!r.trim()) return alert('Please type the problem.');
       await setStatus(el, b, 'pending', r.trim()); return fillList(t);
     }
-    if(next === 'received' && b.sentBy === me.u && me.role !== 'admin') return alert('You marked this bill as sent. Another person must confirm received.');
+    if(next === 'received' && needOther(b)) return alert('You marked this bill as sent. Another person must confirm received.');
     if(!confirm('Mark ' + b.docno + ' (' + b.estate + ') as ' + next + '?')) return;
     await setStatus(el, b, next, ''); fillList(t);
   },
@@ -1461,6 +1515,34 @@ const ACT = {
     const u = db.users[+el.dataset.i], p = prompt('New password for ' + u.u + ' (at least 6 characters):');
     if(p === null) return; if(p.length < 6) return alert('Password must be at least 6 characters.');
     try{ await busy(el, () => rpc('papan_user_password', {...T(), p_username:u.u, p_password:p})); toast('Password changed for ' + u.u + '.'); }catch(e){}
+  },
+  userrefresh: async () => { await refresh(); render(); },
+  userkick: async el => { const u = db.users[+el.dataset.i]; if(!confirm('Log ' + u.u + ' out on all devices?')) return;
+    try{ await busy(el, () => rpc('papan_user_kick', {...T(), p_username:u.u})); toast(u.u + ' is logged out.'); await refresh(); render(); }catch(e){} },
+  grpsave: async (el, t) => {
+    const old = Object.fromEntries((db.groups || []).map(g => [g.id, JSON.stringify([g.name, [...(g.rights || [])].sort()])]));
+    const ch = t.gEdit.filter(g => !g.locked && old[g.id] !== JSON.stringify([g.name, [...(g.rights || [])].sort()]));
+    if(ch.some(g => !g.name.trim())) return alert('A group needs a name.');
+    try{ await busy(el, async () => { for(const g of ch) await rpc('papan_group_save', {...T(), p_group:{id:g.id, name:g.name.trim(), rights:g.rights || []}}); });
+      t.gEdit = null; t.gDirty = false; toast('✔ Groups saved'); await refresh(); render(); }catch(e){}
+  },
+  grpundo: (el, t) => { t.gEdit = null; t.gDirty = false; render(); },
+  grpadd: async (el, t) => {
+    const n = ($('#ng_name').value || '').trim(); if(!n) return alert('Type the new group name first.');
+    if(t.gDirty && !confirm('Your unsaved ticks will be lost. Add the group anyway?')) return;
+    try{ await busy(el, () => rpc('papan_group_save', {...T(), p_group:{name:n, rights:[]}})); t.gEdit = null; t.gDirty = false; toast('Group ' + n + ' added. Tick its rights, then Save.'); await refresh(); render(); }catch(e){}
+  },
+  grpdel: async (el, t) => {
+    const g = t.gEdit[+el.dataset.j]; if(!confirm('Delete group ' + g.name + '?')) return;
+    try{ await busy(el, () => rpc('papan_group_delete', {...T(), p_id:g.id})); t.gEdit = null; t.gDirty = false; toast('Group deleted.'); await refresh(); render(); }catch(e){}
+  },
+  logload: (el, t) => loadLog(t),
+  logcsv: (el, t) => {
+    const L = t.logRows || []; if(!L.length) return alert('Nothing to download.');
+    const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+    const csv = '﻿' + [['Time','User','What','Doc no.','Detail'].map(q).join(','), ...L.map(r => [fmtTime(Date.parse(r.at)), r.u, ACT_LBL[r.act] || r.act, r.doc, r.detail].map(q).join(','))].join('\r\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'})); a.download = `Papan activity ${t.lf.from} to ${t.lf.to}.csv`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   },
   backup: () => {
     const data = {papan:'backup', version:2, exportedAt:new Date().toISOString(), settings:db.settings, bills:db.bills, folders:db.folders,
@@ -1599,8 +1681,32 @@ document.addEventListener('input', async e => {
   else if(k === 'fe'){ t.fe[el.dataset.k] = el.value; if(el.dataset.k === 'company'){ const e2 = estatesFor(t.fe.company); if(!e2.includes(t.fe.estate)) t.fe.estate = ''; render(); } }
   else if(k === 'pf'){ t.pf[el.dataset.k] = el.value; if(el.dataset.k === 'company') t.pf.estate = ''; t.openF = null; render(); }
   else if(k === 'pset'){ db.settings.photo[el.dataset.k] = +el.value || (el.dataset.k === 'overdue' ? 3 : 0); saveSetting('photo', el.tagName === 'SELECT'); }
-  else if(k === 'role'){ const u = db.users[+el.dataset.i]; try{ await rpc('papan_user_role', {...T(), p_username:u.u, p_role:el.value}); u.role = el.value; toast('✔ Saved'); }catch(err){ toast(err.message, true); refresh(); } }
+  else if(k === 'role'){ const u = db.users[+el.dataset.i]; try{ await rpc('papan_user_role', {...T(), p_username:u.u, p_role:el.value}); u.group = el.value; u.role = el.value === 'admin' ? 'admin' : 'staff'; toast('✔ Saved'); render(); }catch(err){ toast(err.message, true); refresh(); } }
+  else if(k === 'gname'){ t.gEdit[+el.dataset.j].name = el.value; t.gDirty = true; showGrpBar(t); }
+  else if(k === 'gright'){ const g = t.gEdit[+el.dataset.j], r = el.dataset.k; g.rights = (g.rights || []).filter(x => x !== r); if(el.checked) g.rights.push(r); t.gDirty = true; showGrpBar(t); }
+  else if(k === 'lf'){ t.lf[el.dataset.k] = el.value; if(el.dataset.k !== 'q') loadLog(t); }
+  else if(k === 'rule'){ db.settings.rules = {...(db.settings.rules || {}), [el.dataset.k]:el.checked}; saveSetting('rules'); }
 });
+function grpBar(t){
+  const d = !!t.gDirty;
+  return `<div class="savebar ${d ? 'dirty' : ''}" id="grpbar" style="max-width:none"><span class="msg">${d ? '● Not saved yet. Click Save to keep your changes.' : 'Tick what each group can do. Click 💾 Save when done.'}</span><span class="sp" style="flex:1"></span>
+    <button class="sm" data-act="grpundo" ${d ? '' : 'disabled'}>↶ Cancel changes</button><button class="sm sv" data-act="grpsave" ${d ? '' : 'disabled'}>💾 Save</button></div>`;
+}
+function showGrpBar(t){ const b = $('#grpbar'); if(b) b.outerHTML = grpBar(t); }
+async function loadLog(t){
+  const box = $('#logbox'); if(!box) return;
+  box.innerHTML = '<p class="muted">Loading…</p>';
+  try{
+    t.logRows = await rpc('papan_activity_list', {...T(), p_from:t.lf.from || null, p_to:t.lf.to || null, p_user:t.lf.user || null, p_q:(t.lf.q || '').trim() || null});
+  }catch(e){ box.innerHTML = `<p class="err">${esc(e.message)}</p>`; return; }
+  const L = t.logRows || [];
+  const el = $('#logbox'); if(!el) return;
+  el.innerHTML = `<p class="muted" style="margin:0 0 6px;font-size:12px">${L.length}${L.length >= 2000 ? '+ (showing newest 2000)' : ''} records</p>
+    <div class="tw"><table class="t logT"><thead><tr><th>Time</th><th>User</th><th>What</th><th>Doc no.</th><th>Detail</th></tr></thead><tbody>
+    ${L.length ? L.map(r => `<tr><td style="white-space:nowrap">${fmtTime(Date.parse(r.at))}</td><td>${esc(r.u || '')}</td><td class="act ${r.act === 'login_failed' || /deleted/.test(r.act) ? 'note-red' : ''}">${esc(ACT_LBL[r.act] || r.act)}</td><td class="note-red">${esc(r.doc || '')}</td><td class="muted">${esc(r.detail || '')}</td></tr>`).join('')
+      : '<tr><td colspan="5" class="muted" style="text-align:center;padding:16px">Nothing found for these filters.</td></tr>'}
+    </tbody></table></div>`;
+}
 function updDoc(t){ const d = $('#docno'); if(d) d.textContent = t.b.estate ? fmtDoc(+t.b.seq || 0, t.b.date || today(), t.b.estate) + (t.b.id || t.seqManual ? '' : ' (est.)') : 'Choose estate'; }
 
 init();
